@@ -1,7 +1,7 @@
 {
   "name": "AcolyteBetterEcho",
   "version_number": "0.1.0",
-  "website_url": "",
+  "website_url": "https://github.com/EviLord032/AcolyteBetterEcho-Mod",
   "description": "Anima Echo rework: full skill reset on activation, 3 Convictions per Sacrifice, and Convictions stored during the Litany.",
   "dependencies": [
     "bbepis-BepInExPack-5.4.2122",
