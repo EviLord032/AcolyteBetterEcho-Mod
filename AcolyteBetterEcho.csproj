@@ -1,0 +1,81 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>AcolyteBetterEcho</AssemblyName>
+    <RootNamespace>AcolyteBetterEcho</RootNamespace>
+    <!-- Single source for the version: the plugin and the Thunderstore manifest both take it from here -->
+    <Version>0.1.0</Version>
+    <DebugType>portable</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- BepInEx.dll is flagged x86; harmless for Unity Mono -->
+    <ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>None</ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>
+  </PropertyGroup>
+
+  <!-- Local paths. Override on the command line, e.g. dotnet build -p:R2Profile=Default -->
+  <PropertyGroup>
+    <GameDir Condition="'$(GameDir)' == ''">S:\Steam\steamapps\common\Risk of Rain 2</GameDir>
+    <R2Profile Condition="'$(R2Profile)' == ''">Dev</R2Profile>
+    <ProfileDir>$(APPDATA)\r2modmanPlus-local\RiskOfRain2\profiles\$(R2Profile)</ProfileDir>
+    <ManagedDir>$(GameDir)\Risk of Rain 2_Data\Managed</ManagedDir>
+    <BepInExDir>$(ProfileDir)\BepInEx</BepInExDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="BepInEx" HintPath="$(BepInExDir)\core\BepInEx.dll" Private="false" />
+    <Reference Include="MonoMod.RuntimeDetour" HintPath="$(BepInExDir)\core\MonoMod.RuntimeDetour.dll" Private="false" />
+    <Reference Include="MonoMod.Utils" HintPath="$(BepInExDir)\core\MonoMod.Utils.dll" Private="false" />
+    <Reference Include="Mono.Cecil" HintPath="$(BepInExDir)\core\Mono.Cecil.dll" Private="false" />
+    <Reference Include="MMHOOK_RoR2" HintPath="$(BepInExDir)\plugins\MMHOOK\MMHOOK_RoR2.dll" Private="false" />
+
+    <Reference Include="RoR2" HintPath="$(ManagedDir)\RoR2.dll" Private="false" />
+    <Reference Include="com.unity.multiplayer-hlapi.Runtime" HintPath="$(ManagedDir)\com.unity.multiplayer-hlapi.Runtime.dll" Private="false" />
+    <Reference Include="UnityEngine" HintPath="$(ManagedDir)\UnityEngine.dll" Private="false" />
+    <Reference Include="UnityEngine.CoreModule" HintPath="$(ManagedDir)\UnityEngine.CoreModule.dll" Private="false" />
+  </ItemGroup>
+
+  <!-- Generate BuildInfo.Version from <Version> so the plugin attribute can use it as a constant -->
+  <Target Name="GenerateBuildInfo" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <BuildInfoFile>$(IntermediateOutputPath)BuildInfo.g.cs</BuildInfoFile>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(BuildInfoFile)" Overwrite="true" WriteOnlyWhenDifferent="true"
+                      Lines="namespace AcolyteBetterEcho { internal static class BuildInfo { public const string Version = &quot;$(Version)&quot;%3B } }" />
+    <ItemGroup>
+      <Compile Include="$(BuildInfoFile)" />
+      <FileWrites Include="$(BuildInfoFile)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Copy the built mod into the r2modman profile so it loads on next launch.
+       Skip with -p:Deploy=false (e.g. while the game is running and locks the files) -->
+  <Target Name="CopyToProfile" AfterTargets="Build" Condition="'$(Deploy)' != 'false' And Exists('$(BepInExDir)\plugins')">
+    <MakeDir Directories="$(BepInExDir)\plugins\$(AssemblyName)" />
+    <Copy SourceFiles="$(TargetPath);$(TargetDir)$(AssemblyName).pdb" DestinationFolder="$(BepInExDir)\plugins\$(AssemblyName)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- dotnet build -t:Package  ->  dist\AcolyteBetterEcho.zip for Thunderstore.
+       Always packages a Release build, with the manifest version taken from <Version>. -->
+  <Target Name="Package">
+    <MSBuild Projects="$(MSBuildProjectFullPath)" Targets="Build" Properties="Configuration=Release;Deploy=false">
+      <Output TaskParameter="TargetOutputs" ItemName="ReleaseAssembly" />
+    </MSBuild>
+    <PropertyGroup>
+      <StageDir>$(MSBuildProjectDirectory)\obj\package</StageDir>
+      <DistDir>$(MSBuildProjectDirectory)\dist</DistDir>
+      <ManifestText>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)\Thunderstore\manifest.json'))</ManifestText>
+      <ManifestText>$([System.Text.RegularExpressions.Regex]::Replace($(ManifestText), '"version_number":\s*"[^"]*"', '"version_number": "$(Version)"'))</ManifestText>
+    </PropertyGroup>
+    <RemoveDir Directories="$(StageDir)" />
+    <ItemGroup>
+      <PackageFiles Include="Thunderstore\*" Exclude="Thunderstore\manifest.json" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PackageFiles);@(ReleaseAssembly)" DestinationFolder="$(StageDir)" />
+    <WriteLinesToFile File="$(StageDir)\manifest.json" Lines="$([MSBuild]::Escape($(ManifestText)))" Overwrite="true" />
+    <MakeDir Directories="$(DistDir)" />
+    <ZipDirectory SourceDirectory="$(StageDir)" DestinationFile="$(DistDir)\$(AssemblyName).zip" Overwrite="true" />
+    <Message Importance="high" Text="Packaged $(AssemblyName) $(Version) -> $(DistDir)\$(AssemblyName).zip" />
+  </Target>
+
+</Project>
